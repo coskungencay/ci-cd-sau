@@ -78,20 +78,42 @@ jobs:
           ignore-unfixed: true
 
   # ---------------------------------------------------------------------------
-  # JOB 3: Deploy simulasyonu
-  # Sadece docker-build-and-trivy yesil olursa calisir.
-  # Gercek bir sunucuya deploy yapmaz; ogrenciye "tum kalite ve guvenlik
-  # kapilarindan gectigimizde deploy asamasina ulasiyoruz" mesajini verir.
+  # JOB 3: GitHub Pages'e gercek deploy
+  # Sadece test/SAST + Trivy guvenlik gate'i basarili olursa calisir.
+  # web/ klasorundeki statik sayfayi GitHub Pages'e yayinlar; boylece
+  # "kalite ve guvenlik kapilarindan gecen build canli URL'de gorunur olur".
   # ---------------------------------------------------------------------------
-  deploy-simulation:
-    name: Deploy Simulation
+  deploy-pages:
+    name: Deploy to GitHub Pages
     runs-on: ubuntu-latest
     needs: docker-build-and-trivy
 
+    permissions:
+      pages: write       # Pages'e deploy edebilmek icin
+      id-token: write    # OIDC token (deploy-pages action'i icin gerekli)
+      contents: read
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
     steps:
-      - name: Simulated deployment
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Announce deployment
         run: |
           echo "All CI/CD and DevSecOps checks passed."
-          echo "Deploy simulation started..."
-          echo "Application would be deployed to staging/production here."
-          echo "Deploy simulation completed successfully."
+          echo "Deploying static site to GitHub Pages..."
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload static site artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./web
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

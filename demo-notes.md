@@ -59,31 +59,84 @@ Bu **security gate** mantığıdır: testler geçmiş olsa bile, içinde kritik 
 
 ## Sunum Sırasında Yapılacak Komutlar
 
-İlk yükleme:
+Repo zaten oluşturuldu: https://github.com/coskungencay/ci-cd-sau
 
-```bash
-git init
-git add .
-git commit -m "Initial CI/CD DevSecOps demo"
-git branch -M main
-git remote add origin <GITHUB_REPO_URL>
-git push -u origin main
+### 1. "Değişiklik nasıl yansıyor?" demosu (HAPPY PATH)
+
+Bu, hocanın en çok merak edeceği şey: "Tamam pipeline çalışıyor da, ben bir şey değiştirdiğimde bunu nereden göreceğim?"
+
+Açıklama: Geliştirici küçük bir kod değişikliği yapar (versiyon yükseltir gibi). Bu değişiklik commit'lenip push edildiğinde GitHub iki yerde anında gösterir:
+
+1. **Code / Commits sekmesi** → diff görünür: hangi satır değişmiş, ne eklenmiş ne silinmiş.
+2. **Actions sekmesi** → o commit için yeni bir pipeline run'ı otomatik başlar.
+
+Somut örnek — versiyon `1.0.0` → `1.0.1`:
+
+`app/main.py` içinde:
+
+```python
+@app.get("/version")
+def version():
+    return {"version": "1.0.1", "environment": "demo"}  # 1.0.0 -> 1.0.1
 ```
 
-Fail fast demosu:
+`tests/test_main.py` içinde aynı değeri güncelle (yoksa test düşer ve fail-fast tetiklenir — onu sonra göstereceğiz):
+
+```python
+def test_version_value():
+    response = client.get("/version")
+    assert response.json()["version"] == "1.0.1"
+```
+
+Sonra:
 
 ```bash
-# tests/test_main.py icindeki bir assert'i 500 yap
-git add .
+git add app/main.py tests/test_main.py
+git commit -m "Bump version to 1.0.1"
+git push
+```
+
+Sunumda yapılacak gösterim:
+
+1. Repo sayfasında **Commits** sekmesini aç → en üstteki commit'e tıkla → "2 dosya değişti" diff'i göster. Bu, "ne değişti?" sorusunun doğrudan cevabı.
+2. **Actions** sekmesine geç → yeni run başlamış, üç job sırayla yeşile dönüyor:
+   - `Test & SAST` ✓
+   - `Docker Build & Trivy Scan` ✓
+   - `Deploy Simulation` ✓
+
+Bu, pipeline'ın değişikliği uçtan uca takip ettiğinin kanıtıdır.
+
+### 2. Fail Fast demosu
+
+`tests/test_main.py` içinde bir assert'i kasıtlı olarak boz:
+
+```python
+def test_health_returns_200():
+    response = client.get("/health")
+    assert response.status_code == 500   # bilerek yanlis
+```
+
+```bash
+git add tests/test_main.py
 git commit -m "Break test to demonstrate fail fast"
 git push
 ```
 
-Düzeltme:
+Sonuç: `Test & SAST` job'u kırmızıya döner. Sonraki iki job (Docker build, deploy) **hiç çalışmaz**. Hocaya: "Hatalı kod, pipeline'ın en erken adımında yakalandı; pahalı build/deploy adımlarına geçilmedi. Bu fail-fast prensibidir." denir.
+
+### 3. Düzeltme — pipeline tekrar yeşile döner
 
 ```bash
-# Test'i eski haline geri getir
-git add .
+# tests/test_main.py'deki assert'i 200'e geri al
+git add tests/test_main.py
 git commit -m "Fix failing test"
 git push
 ```
+
+Pipeline yeşile döner; üç job da geçer.
+
+### 4. (Opsiyonel) Security Gate demosu
+
+Daha cesursan, Trivy gate'inin gerçekten çalıştığını canlı göstermek için workflow'da `ignore-unfixed: true` satırını sil ve push at. Trivy, base image'daki HIGH CVE'leri yakalar, **deploy simülasyonu çalışmaz**. Sonra `ignore-unfixed: true`'yu geri koy ve yeşile döndür.
+
+Bu, "testler geçmiş olsa bile, içinde HIGH/CRITICAL açık olan image deploy'a gitmez" mesajının canlı kanıtıdır.

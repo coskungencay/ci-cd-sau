@@ -72,6 +72,10 @@ jobs:
           severity: CRITICAL,HIGH
           format: table
           exit-code: 1
+          # Henuz upstream'de fix yayinlanmamis CVE'leri yoksay.
+          # Boylece "yapacak bir sey olmayan" zaafiyetler pipeline'i kirmaz;
+          # ama fix'i bulunan ciddi bir acik geldiginde gate yine devreye girer.
+          ignore-unfixed: true
 
   # ---------------------------------------------------------------------------
   # JOB 3: Deploy simulasyonu

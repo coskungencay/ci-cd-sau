@@ -4,7 +4,10 @@ WORKDIR /app
 
 COPY requirements.txt .
 
-RUN pip install --no-cache-dir -r requirements.txt
+# pip + setuptools + wheel'i once guncelle: base image ile gelen surumlerin
+# bilinen guvenlik aciklarini (Trivy'nin yakaladiklari) kapatir.
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel \
+ && pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app
 

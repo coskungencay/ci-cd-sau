@@ -1,0 +1,93 @@
+name: CI/CD + DevSecOps Demo Pipeline
+
+# Pipeline tetikleyicileri:
+# - main branch'e yapilan push'larda calisir
+# - main branch'e acilan pull request'lerde calisir
+# - Actions sekmesinden manuel olarak da calistirilabilir
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+
+  # ---------------------------------------------------------------------------
+  # JOB 1: Unit testler + Semgrep ile statik guvenlik analizi (SAST)
+  # Pipeline'in ilk kalite kapisi. Testler veya SAST basarisiz olursa
+  # sonraki job'lar (build, deploy) hic calismaz. Bu "fail fast" prensibidir.
+  # ---------------------------------------------------------------------------
+  test-and-sast:
+    name: Test & SAST
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Upgrade pip
+        run: python -m pip install --upgrade pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run unit tests with pytest
+        run: pytest tests/
+
+      # Semgrep, kodda bilinen guvenlik zaafiyet pattern'lerini arar (SAST).
+      # Demo sirasinda yanlis pozitiflerin pipeline'i kirmamasi icin
+      # default ruleset kullaniliyor.
+      - name: Run Semgrep SAST scan
+        uses: semgrep/semgrep-action@v1
+
+  # ---------------------------------------------------------------------------
+  # JOB 2: Docker image build + Trivy ile container guvenlik taramasi
+  # Sadece test-and-sast yesil olursa calisir.
+  # Trivy, image icindeki OS paketlerinde ve Python bagimliliklarinda
+  # bilinen CVE'leri arar. HIGH veya CRITICAL bulunursa pipeline kirilir.
+  # Bu bizim "DevSecOps security gate"imizdir.
+  # ---------------------------------------------------------------------------
+  docker-build-and-trivy:
+    name: Docker Build & Trivy Scan
+    runs-on: ubuntu-latest
+    needs: test-and-sast
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t demo-api:${{ github.sha }} .
+
+      - name: Run Trivy vulnerability scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: demo-api:${{ github.sha }}
+          severity: CRITICAL,HIGH
+          format: table
+          exit-code: 1
+
+  # ---------------------------------------------------------------------------
+  # JOB 3: Deploy simulasyonu
+  # Sadece docker-build-and-trivy yesil olursa calisir.
+  # Gercek bir sunucuya deploy yapmaz; ogrenciye "tum kalite ve guvenlik
+  # kapilarindan gectigimizde deploy asamasina ulasiyoruz" mesajini verir.
+  # ---------------------------------------------------------------------------
+  deploy-simulation:
+    name: Deploy Simulation
+    runs-on: ubuntu-latest
+    needs: docker-build-and-trivy
+
+    steps:
+      - name: Simulated deployment
+        run: |
+          echo "All CI/CD and DevSecOps checks passed."
+          echo "Deploy simulation started..."
+          echo "Application would be deployed to staging/production here."
+          echo "Deploy simulation completed successfully."
